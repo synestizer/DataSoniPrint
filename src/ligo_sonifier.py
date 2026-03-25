@@ -159,7 +159,20 @@ def spread_freq_range(spread_val):
 
 # ─── Audio processing ────────────────────────────────────────────────────────
 def process_strain():
-    """Bandpass → normalize → spread compression → resample."""
+    """Bandpass → normalize → data-to-pitch FM synthesis via spread control.
+
+    Spread controls how data values map to pitch:
+      spread=0  → narrow pitch band (all values ≈ same note, melodic hum)
+      spread=1  → wide pitch band  (nearby values → different pitches, raw)
+
+    The algorithm:
+      1. Bandpass filter the raw strain
+      2. Normalize to [-1, +1]
+      3. Map each sample value to an instantaneous frequency:
+           freq = center * 2^( value * semitone_range / 12 )
+         where semitone_range grows with spread (2–48 semitones)
+      4. Phase-accumulate a sine wave at that frequency → the output audio
+    """
     if ST.strain is None:
         return None
 
@@ -170,20 +183,30 @@ def process_strain():
         hi = lo + 50
 
     filtered = bandpass(ST.strain, lo, hi, sr)
-    audio = normalize(filtered, target_peak=0.75)
+    normed = normalize(filtered, target_peak=1.0)
 
-    spread = ST.spread
-    if spread < 1.0:
-        compress = 1.0 + (1.0 - spread) * 4.0
-        sign = np.sign(audio)
-        audio = sign * (np.abs(audio) ** (1.0 / compress))
-        audio = normalize(audio, target_peak=0.75)
-
+    # Resample to playback rate first (FM synthesis at output sr)
     if sr != ST.playback_sr:
-        orig_t = np.linspace(0, 1, len(audio))
-        new_len = int(len(audio) * ST.playback_sr / sr)
+        orig_t = np.linspace(0, 1, len(normed))
+        new_len = int(len(normed) * ST.playback_sr / sr)
         new_t = np.linspace(0, 1, new_len)
-        audio = np.interp(new_t, orig_t, audio)
+        normed = np.interp(new_t, orig_t, normed)
+
+    out_sr = ST.playback_sr
+    spread = ST.spread
+
+    # Pitch mapping: each sample value → instantaneous frequency
+    # semi_range: 2 semitones (tight cluster) to 48 semitones (4 octaves)
+    semi_range = 2 + spread * 46
+    center_hz = 440.0   # A4
+
+    # value [-1,+1] → freq = center * 2^(value * semi_range / 12)
+    freq_array = center_hz * np.power(2.0, normed * semi_range / 12.0)
+
+    # Phase accumulation → sine wave
+    phase_inc = freq_array / out_sr          # cycles per sample
+    phase = np.cumsum(phase_inc)
+    audio = np.sin(2.0 * np.pi * phase) * 0.75
 
     return audio
 
