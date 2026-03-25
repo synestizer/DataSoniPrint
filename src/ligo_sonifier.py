@@ -303,6 +303,9 @@ def recompute_visuals():
 server = None
 VOL_SIG = None
 SPEED_SIG = None
+REVERB_MIX = None
+# keep refs to all active pyo chain objects so they don't get GC'd
+_audio_chain = []   # [reader, dry_mul, wet_reverb, ...]
 
 
 def _base_freq():
@@ -313,16 +316,15 @@ def _base_freq():
 
 
 def boot_audio():
-    global server, VOL_SIG, SPEED_SIG
+    global server, VOL_SIG, SPEED_SIG, REVERB_MIX
     dev = pa_get_default_output()
     server = Server(sr=ST.playback_sr, duplex=0, buffersize=4096, audio="portaudio")
     server.setOutputDevice(dev)
     server.boot()
     server.start()
-    VOL_SIG = SigTo(value=ST.volume, time=0.08, init=ST.volume)
-    spd = speed_from_slider(ST.speed)
-    SPEED_SIG = SigTo(value=_base_freq() * spd, time=0.15,
-                      init=_base_freq() * spd)
+    VOL_SIG = SigTo(value=ST.volume, time=0.05, init=ST.volume)
+    SPEED_SIG = SigTo(value=1.0, time=0.12, init=1.0)
+    REVERB_MIX = SigTo(value=ST.reverb_mix, time=0.1, init=ST.reverb_mix)
 
 
 def start_playback():
@@ -336,31 +338,37 @@ def start_playback():
     bf = _base_freq()
     SPEED_SIG.setValue(bf * spd)
 
-    ST.reader = TableRead(ST.table, freq=SPEED_SIG, loop=True, mul=0.9 * VOL_SIG)
-    rev_amt = ST.reverb_mix
-    dry = ST.reader * (1.0 - rev_amt * 0.5)
-    wet = Freeverb(ST.reader, size=0.88, damp=0.5, bal=1.0, mul=rev_amt * 0.6)
-    dry.out()
-    wet.out()
+    reader = TableRead(ST.table, freq=SPEED_SIG, loop=True, mul=VOL_SIG)
+    reverb = Freeverb(reader, size=0.88, damp=0.5, bal=1.0, mul=REVERB_MIX)
+    reader.out()
+    reverb.out()
+
+    ST.reader = reader
+    _audio_chain.clear()
+    _audio_chain.extend([reader, reverb])
 
     ST.play_start = time.time()
     ST.playing = True
+    print(f"  Playback started: base_freq={bf:.5f}, speed={spd:.2f}x")
 
 
 def stop_playback():
-    if ST.reader:
+    global _audio_chain
+    for obj in _audio_chain:
         try:
-            ST.reader.stop()
+            obj.stop()
         except Exception:
             pass
+    _audio_chain.clear()
     ST.reader = None
     ST.table = None
     ST.playing = False
 
 
 def restart_playback():
+    """Restart playback with new audio data (called from main thread)."""
     if ST.playing:
-        threading.Thread(target=start_playback, daemon=True).start()
+        start_playback()
 
 
 # ─── Waveform cache ─────────────────────────────────────────────────────────
@@ -368,7 +376,7 @@ _wave_cache = {"key": None, "points": None}
 
 
 def get_waveform_points(rect, data, n_points=600):
-    """Downsample array for waveform display, cached by data identity."""
+    """Downsample array for waveform display, normalized to fill panel."""
     if data is None or len(data) == 0:
         return []
     key = id(data)
@@ -377,10 +385,14 @@ def get_waveform_points(rect, data, n_points=600):
 
     step = max(1, len(data) // n_points)
     samples = data[::step][:n_points]
+    # Normalize to [-1, +1] for display (raw strain is ~1e-21 scale)
+    peak = np.max(np.abs(samples))
+    if peak > 0:
+        samples = samples / peak
     x0, yc = rect.x, rect.centery
     w, h2 = rect.width, rect.height
     points = [(x0 + int(i / len(samples) * w),
-               int(yc - s * h2 * 0.45))
+               int(yc - s * h2 * 0.42))
               for i, s in enumerate(samples)]
 
     _wave_cache["key"] = key
@@ -656,8 +668,7 @@ def main():
                     if ST.playing:
                         stop_playback()
                     else:
-                        threading.Thread(target=start_playback,
-                                         daemon=True).start()
+                        start_playback()
                 elif ev.key == pygame.K_r:
                     ST.audio = process_strain()
                     _wave_cache["key"] = None
@@ -673,8 +684,7 @@ def main():
                     if ST.playing:
                         stop_playback()
                     else:
-                        threading.Thread(target=start_playback,
-                                         daemon=True).start()
+                        start_playback()
                     continue
                 if reproc_rect.collidepoint(mx, my):
                     ST.audio = process_strain()
@@ -705,27 +715,32 @@ def main():
                 elif ST.dragging == "volume":
                     ST.volume = val
                     if VOL_SIG:
-                        VOL_SIG.time = 0.05
                         VOL_SIG.setValue(val)
                 elif ST.dragging == "speed":
                     ST.speed = val
-                    if SPEED_SIG:
-                        SPEED_SIG.setValue(_base_freq() * speed_from_slider(val))
+                    if SPEED_SIG and ST.audio is not None:
+                        bf = _base_freq()
+                        spd = speed_from_slider(val)
+                        SPEED_SIG.setValue(bf * spd)
                 elif ST.dragging == "reverb":
                     ST.reverb_mix = val
+                    if REVERB_MIX:
+                        REVERB_MIX.setValue(val * 0.6)
                 elif ST.dragging == "bp_low":
                     ST.bp_low_norm = val
                 elif ST.dragging == "bp_high":
                     ST.bp_high_norm = val
 
-        # deferred reprocess (on slider release)
+        # deferred reprocess (on slider release for spread/bandpass)
         if needs_reprocess:
             needs_reprocess = False
+            print("  Reprocessing audio...")
             ST.audio = process_strain()
             _wave_cache["key"] = None
             recompute_visuals()
             if ST.playing:
                 restart_playback()
+            print("  Reprocess done.")
 
         clock.tick(FPS)
 
