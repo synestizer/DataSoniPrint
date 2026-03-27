@@ -3,3 +3,6 @@ __pycache__/
 .venv
 exports/
 *.stl
+*.wav
+*_settings.json
+web/__pycache__/
