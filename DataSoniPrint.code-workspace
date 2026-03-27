@@ -33,6 +33,21 @@
 					"~/Downloads/H-H1_GWOSC_O4a_4KHZ_R1-1368424448-4096.hdf5",
 					"--duration", "60"
 				]
+			},
+			{
+				"label": "Run CSV Viewer",
+				"type": "shell",
+				"command": "python",
+				"args": ["src/csv_viewer.py", "${input:csvFile}"],
+				"problemMatcher": []
+			}
+		],
+		"inputs": [
+			{
+				"id": "csvFile",
+				"description": "Path to CSV file",
+				"type": "promptString",
+				"default": "data.csv"
 			}
 		]
 	}

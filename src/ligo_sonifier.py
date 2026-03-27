@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -134,6 +135,46 @@ class State:
 
 
 ST = State()
+
+
+# ─── Settings save/load ─────────────────────────────────────────────────────
+def save_settings(path=None):
+    """Save slider values to a JSON file."""
+    if path is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "ligo_settings.json")
+    data = {
+        "spread": ST.spread,
+        "volume": ST.volume,
+        "speed": ST.speed,
+        "reverb_mix": ST.reverb_mix,
+        "bp_low_norm": ST.bp_low_norm,
+        "bp_high_norm": ST.bp_high_norm,
+    }
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"  Settings saved: {path}")
+    return path
+
+
+def load_settings(path=None):
+    """Load slider values from a JSON file."""
+    if path is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "ligo_settings.json")
+    if not os.path.isfile(path):
+        print(f"  No settings file: {path}")
+        return False
+    with open(path, "r") as f:
+        data = json.load(f)
+    ST.spread = data.get("spread", ST.spread)
+    ST.volume = data.get("volume", ST.volume)
+    ST.speed = data.get("speed", ST.speed)
+    ST.reverb_mix = data.get("reverb_mix", ST.reverb_mix)
+    ST.bp_low_norm = data.get("bp_low_norm", ST.bp_low_norm)
+    ST.bp_high_norm = data.get("bp_high_norm", ST.bp_high_norm)
+    print(f"  Settings loaded: {path}")
+    return True
 
 
 # ─── Slider helpers ──────────────────────────────────────────────────────────
@@ -592,27 +633,42 @@ def draw(screen, fonts):
     screen.blit(font.render(stl_text, True, TXT),
                 (stl_rect.x + 35, stl_rect.y + 8))
 
+    # Save Settings
+    save_rect = pygame.Rect(MARGIN + 620, btn_y, 200, 40)
+    pygame.draw.rect(screen, (40, 55, 70), save_rect, border_radius=6)
+    pygame.draw.rect(screen, (80, 160, 220), save_rect, width=2, border_radius=6)
+    screen.blit(font.render("\U0001F4BE Save Settings", True, TXT),
+                (save_rect.x + 15, save_rect.y + 8))
+
+    # Load Settings
+    load_rect = pygame.Rect(MARGIN + 840, btn_y, 200, 40)
+    pygame.draw.rect(screen, (50, 50, 40), load_rect, border_radius=6)
+    pygame.draw.rect(screen, (200, 180, 80), load_rect, width=2, border_radius=6)
+    screen.blit(font.render("\U0001F4C2 Load Settings", True, TXT),
+                (load_rect.x + 15, load_rect.y + 8))
+
     # Status line
+    status_y = btn_y + 48
     if ST.stl_status:
         screen.blit(small.render(ST.stl_status, True, (180, 130, 255)),
-                    (MARGIN + 620, btn_y + 12))
+                    (MARGIN, status_y))
     elif ST.playing and ST.audio is not None:
         elapsed = time.time() - ST.play_start
         spd_val = speed_from_slider(ST.speed)
         loop_dur = len(ST.audio) / ST.playback_sr / spd_val
         pct = (elapsed % loop_dur) / loop_dur * 100 if loop_dur > 0 else 0
         stat = f"Playing  {elapsed:.1f}s  ({pct:.0f}% of loop)"
-        screen.blit(small.render(stat, True, ACCENT2), (MARGIN + 620, btn_y + 12))
+        screen.blit(small.render(stat, True, ACCENT2), (MARGIN, status_y))
     elif ST.strain is not None:
         screen.blit(small.render("Ready \u2014 press Play", True, TXT_DIM),
-                    (MARGIN + 620, btn_y + 12))
+                    (MARGIN, status_y))
 
     # Key hints
-    hints = "SPACE: play/stop    R: reprocess    E: export STL    Q/ESC: quit"
+    hints = "SPACE: play/stop    R: reprocess    E: export STL    S: save    L: load    Q/ESC: quit"
     screen.blit(tiny.render(hints, True, (80, 80, 100)), (MARGIN, HEIGHT - 25))
 
     pygame.display.flip()
-    return play_rect, reproc_rect, stl_rect
+    return play_rect, reproc_rect, stl_rect, save_rect, load_rect
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -655,7 +711,7 @@ def main():
     needs_reprocess = False
 
     while running:
-        play_rect, reproc_rect, stl_rect = draw(screen, (font, small, tiny))
+        play_rect, reproc_rect, stl_rect, save_rect, load_rect = draw(screen, (font, small, tiny))
 
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -677,6 +733,11 @@ def main():
                         restart_playback()
                 elif ev.key == pygame.K_e:
                     export_stl_threaded()
+                elif ev.key == pygame.K_s:
+                    save_settings()
+                elif ev.key == pygame.K_l:
+                    if load_settings():
+                        needs_reprocess = True
 
             elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 mx, my = ev.pos
@@ -695,6 +756,13 @@ def main():
                     continue
                 if stl_rect.collidepoint(mx, my):
                     export_stl_threaded()
+                    continue
+                if save_rect.collidepoint(mx, my):
+                    save_settings()
+                    continue
+                if load_rect.collidepoint(mx, my):
+                    if load_settings():
+                        needs_reprocess = True
                     continue
                 for tag, rect in SLIDERS:
                     if rect.collidepoint(mx, my):
