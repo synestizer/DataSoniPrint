@@ -250,7 +250,7 @@
 
 <header>
   <h1>DataSoniPrint</h1>
-  <p>Upload CSV &rarr; Sonify &rarr; Download Audio + 3D Print + Settings</p>
+  <p>Upload Data (CSV, HDF5, NetCDF, GRIB, ASDF) &rarr; Sonify &rarr; Download Audio + 3D Print + Settings</p>
 </header>
 
 <main>
@@ -260,25 +260,34 @@
     <h2>1 &mdash; Upload Data</h2>
     <div class="upload-zone" id="dropZone">
       <div class="icon">&#128203;</div>
-      <div><strong>Drop a CSV file here</strong></div>
-      <p>or click to browse &middot; max 50 MB</p>
+      <div><strong>Drop a data file here</strong></div>
+      <p>CSV, HDF5, NetCDF, GRIB, ASDF &middot; max 1 GB</p>
     </div>
-    <input type="file" id="fileInput" accept=".csv">
+    <input type="file" id="fileInput" accept=".csv,.h5,.hdf5,.hdf,.nc,.nc4,.netcdf,.grib,.grib2,.grb,.grb2,.asdf">
     <div class="file-info" id="fileInfo">
       <span class="name" id="fileName"></span>&ensp;&mdash;&ensp;
       <span id="fileMeta"></span>
     </div>
     <div class="col-select" id="colSelect">
-      <label style="font-size:0.82rem;color:var(--dim);display:block;margin-bottom:6px">
-        Sonify column:
-      </label>
-      <select id="colDropdown"></select>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap">
+        <label style="font-size:0.82rem;color:var(--dim)">Sonify columns:</label>
+        <span style="font-size:0.72rem;color:var(--dim)">(each selected column becomes an FM voice &mdash; all data points audible)</span>
+        <button id="selectAllBtn"
+                style="font-size:0.72rem;padding:3px 10px;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:4px;cursor:pointer">
+          Select All
+        </button>
+      </div>
+      <div id="colCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      <select id="colDropdown" style="display:none"></select>
     </div>
     <div class="stats-table" id="statsTable">
       <table>
         <thead><tr><th>Column</th><th>Min</th><th>Max</th><th>Mean</th><th>Count</th></tr></thead>
         <tbody id="statsBody"></tbody>
       </table>
+    </div>
+    <div class="preview-chart" id="previewChart" style="display:none;margin-top:14px">
+      <img id="previewImg" style="width:100%;border-radius:6px;border:1px solid var(--border)" alt="Data preview">
     </div>
     <div class="error" id="uploadError"></div>
   </div>
@@ -361,9 +370,13 @@ const fileName    = $('#fileName');
 const fileMeta    = $('#fileMeta');
 const colSelect   = $('#colSelect');
 const colDropdown = $('#colDropdown');
+const colCheckboxes = $('#colCheckboxes');
+const selectAllBtn = $('#selectAllBtn');
 const statsTable  = $('#statsTable');
 const statsBody   = $('#statsBody');
 const uploadError = $('#uploadError');
+const previewChart = $('#previewChart');
+const previewImg   = $('#previewImg');
 const sliders     = $('#sliders');
 const actions     = $('#actions');
 const processBtn  = $('#processBtn');
@@ -383,6 +396,31 @@ const volumeVal    = $('#volumeVal');
 
 function sliderNorm(el) { return parseInt(el.value) / 100; }
 function speedDisplay(v) { return (0.25 * Math.pow(16, v)).toFixed(2) + 'x'; }
+
+function getSelectedColumns() {
+  return Array.from(colCheckboxes.querySelectorAll('input:checked')).map(cb => cb.value);
+}
+
+async function fetchPreview(column) {
+  try {
+    const res = await fetch('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobId, column }),
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      previewImg.src = URL.createObjectURL(blob);
+      previewChart.style.display = 'block';
+    }
+  } catch (e) { /* preview is best-effort */ }
+}
+
+selectAllBtn.addEventListener('click', () => {
+  const boxes = colCheckboxes.querySelectorAll('input');
+  const allChecked = Array.from(boxes).every(cb => cb.checked);
+  boxes.forEach(cb => cb.checked = !allChecked);
+});
 
 spreadSlider.addEventListener('input', () => {
   spreadVal.textContent = sliderNorm(spreadSlider).toFixed(2);
@@ -414,8 +452,10 @@ async function handleFile(file) {
   downloads.classList.remove('show');
   audioPreview.classList.remove('show');
 
-  if (!file.name.toLowerCase().endsWith('.csv')) {
-    uploadError.textContent = 'Only CSV files are supported.';
+  const allowedExt = ['.csv','.h5','.hdf5','.hdf','.nc','.nc4','.netcdf','.grib','.grib2','.grb','.grb2','.asdf'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!allowedExt.includes(ext)) {
+    uploadError.textContent = 'Unsupported format. Accepted: CSV, HDF5, NetCDF, GRIB, ASDF';
     uploadError.classList.add('show');
     return;
   }
@@ -441,13 +481,22 @@ async function handleFile(file) {
     fileMeta.textContent = `${data.row_count} rows · ${data.headers.length} numeric columns`;
     fileInfo.classList.add('show');
 
-    // Column selector
-    colDropdown.innerHTML = '';
-    data.headers.forEach(h => {
-      const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = h;
-      colDropdown.appendChild(opt);
+    // Column checkboxes
+    colCheckboxes.innerHTML = '';
+    data.headers.forEach((h, i) => {
+      const label = document.createElement('label');
+      label.style.cssText = 'font-size:0.8rem;color:var(--text);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;gap:5px;user-select:none';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = h;
+      cb.checked = true;  // select all by default
+      cb.style.accentColor = 'var(--accent)';
+      cb.addEventListener('change', () => {
+        if (jobId) fetchPreview(h);
+      });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(h));
+      colCheckboxes.appendChild(label);
     });
     colSelect.classList.add('show');
 
@@ -469,6 +518,9 @@ async function handleFile(file) {
     actions.classList.add('show');
     processBtn.disabled = false;
 
+    // Load initial preview chart
+    fetchPreview(data.headers[0]);
+
   } catch (e) {
     uploadError.textContent = 'Network error: ' + e.message;
     uploadError.classList.add('show');
@@ -483,9 +535,18 @@ processBtn.addEventListener('click', async () => {
   audioPreview.classList.remove('show');
   progress.classList.add('show');
 
+  const selectedCols = getSelectedColumns();
+  if (selectedCols.length === 0) {
+    processError.textContent = 'Select at least one column to sonify.';
+    processError.classList.add('show');
+    processBtn.disabled = false;
+    progress.classList.remove('show');
+    return;
+  }
+
   const body = {
     job_id: jobId,
-    column: colDropdown.value,
+    columns: selectedCols,
     spread: sliderNorm(spreadSlider),
     speed: sliderNorm(speedSlider),
     volume: sliderNorm(volumeSlider),
@@ -515,8 +576,10 @@ processBtn.addEventListener('click', async () => {
     $('#dlSettings').href = `${base}/settings`;
 
     const s = data.settings;
-    $('#dlWav').textContent = `${s.column}_sonified.wav`;
-    $('#wavInfo').textContent = `${s.audio_duration_sec}s · ${s.sample_rate} Hz`;
+    const colLabel = s.columns_sonified ? s.columns_sonified.join('+') : 'data';
+    $('#dlWav').textContent = `${colLabel}_sonified.wav`;
+    const chInfo = `${s.n_voices} voice${s.n_voices > 1 ? 's' : ''}`;
+    $('#wavInfo').textContent = `${s.audio_duration_sec}s · ${s.sample_rate} Hz · ${chInfo}`;
 
     downloads.classList.add('show');
 

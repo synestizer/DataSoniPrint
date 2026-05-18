@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv
+exports/
+*.stl
+*.wav
+*_settings.json
+web/__pycache__/

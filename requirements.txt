@@ -1,0 +1,8 @@
+flask>=3.0
+numpy
+numpy-stl
+matplotlib
+h5py
+netCDF4
+cfgrib
+asdf
