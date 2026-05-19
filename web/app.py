@@ -123,6 +123,49 @@ def preview():
     )
 
 
+@app.route("/preview-effects", methods=["POST"])
+def preview_effects():
+    """Generate a spectrogram preview showing sonification effects with spread parameter."""
+    from processing import sonify_columns, compute_spectrogram, generate_spectrogram_preview_png
+    
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+
+    job_id = data.get("job_id") or session.get("job_id")
+    if not job_id or job_id not in _results:
+        return jsonify({"error": "No file uploaded or session expired"}), 400
+
+    job = _results[job_id]
+    columns = job.get("columns_cache")
+    hdrs = job.get("headers")
+
+    if columns is None or hdrs is None:
+        return jsonify({"error": "Data not found, please re-upload"}), 400
+
+    col_names = data.get("columns", [])
+    spread = data.get("spread", 0.35)
+    playback_sr = 44100
+
+    try:
+        # Sonify with the given spread value
+        audio = sonify_columns(columns, col_names, spread=spread, playback_sr=playback_sr)
+        
+        # Compute spectrogram
+        times, freqs, spec_db = compute_spectrogram(audio, sr=playback_sr)
+        
+        # Generate preview
+        png_bytes = generate_spectrogram_preview_png(times, freqs, spec_db)
+    except Exception as e:
+        return jsonify({"error": f"Effects preview failed: {e}"}), 500
+
+    return send_file(
+        io.BytesIO(png_bytes),
+        mimetype="image/png",
+        download_name="effects_preview.png",
+    )
+
+
 @app.route("/process", methods=["POST"])
 def process():
     """Run the sonification pipeline with user parameters."""

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DataSoniPrint — Data Sonification &amp; 3D Print</title>
+<script src="https://cdn.jsdelivr.net/npm/three@r128/build/three.min.js"></script>
 <style>
   :root {
     --bg: #0a0a12;
@@ -37,19 +38,12 @@
     gap: 16px;
     flex-wrap: wrap;
   }
-  header h1 {
-    font-size: 1.5rem;
-    color: var(--accent);
-    font-weight: 700;
-  }
-  header p {
-    font-size: 0.85rem;
-    color: var(--dim);
-  }
+  header h1 { font-size: 1.5rem; color: var(--accent); font-weight: 700; }
+  header p { font-size: 0.85rem; color: var(--dim); }
 
   main {
     width: 100%;
-    max-width: 900px;
+    max-width: 1100px;
     padding: 24px 32px;
     display: flex;
     flex-direction: column;
@@ -70,7 +64,23 @@
     margin-bottom: 14px;
   }
 
-  /* Upload */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
   .upload-zone {
     border: 2px dashed var(--border);
     border-radius: var(--radius);
@@ -87,76 +97,34 @@
   .upload-zone .icon { font-size: 2rem; }
   #fileInput { display: none; }
 
-  .file-info {
-    display: none;
-    margin-top: 14px;
-    padding: 12px 16px;
-    background: rgba(80, 180, 255, 0.08);
-    border-radius: 6px;
-    font-size: 0.85rem;
-  }
+  .file-info { display: none; margin-top: 14px; padding: 12px 16px; background: rgba(80, 180, 255, 0.08); border-radius: 6px; font-size: 0.85rem; }
   .file-info.show { display: block; }
   .file-info .name { color: var(--accent); font-weight: 600; }
 
-  /* Column selector */
   .col-select { display: none; margin-top: 10px; }
   .col-select.show { display: block; }
-  .col-select select {
-    width: 100%;
-    padding: 8px 12px;
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.9rem;
-  }
-  .col-select select:focus { outline: 2px solid var(--accent); }
 
-  /* Stats table */
   .stats-table { display: none; margin-top: 12px; }
   .stats-table.show { display: block; }
-  .stats-table table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-  }
-  .stats-table th, .stats-table td {
-    text-align: left;
-    padding: 4px 10px;
-    border-bottom: 1px solid #1e1e30;
-  }
+  .stats-table table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .stats-table th, .stats-table td { text-align: left; padding: 4px 10px; border-bottom: 1px solid #1e1e30; }
   .stats-table th { color: var(--dim); font-weight: 500; }
-  .stats-table td { font-variant-numeric: tabular-nums; }
 
-  /* Sliders */
   .sliders { display: none; }
   .sliders.show { display: flex; flex-direction: column; gap: 18px; }
-  .slider-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .slider-row label {
-    width: 110px;
-    font-size: 0.82rem;
-    color: var(--dim);
-    flex-shrink: 0;
-  }
-  .slider-row input[type=range] {
-    flex: 1;
-    accent-color: var(--accent);
-    height: 6px;
-  }
-  .slider-row .val {
-    width: 60px;
-    text-align: right;
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-    color: var(--text);
-  }
+  .slider-row { display: flex; align-items: center; gap: 14px; }
+  .slider-row label { width: 110px; font-size: 0.82rem; color: var(--dim); flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent); height: 6px; }
+  .slider-row .val { width: 60px; text-align: right; font-size: 0.82rem; color: var(--text); }
 
-  /* Process button */
-  .actions { display: none; margin-top: 8px; }
+  .preview-section { display: none; margin-top: 16px; }
+  .preview-section.show { display: block; }
+  .preview-section h3 { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; margin-bottom: 8px; }
+  .preview-chart, .preview-3d { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.3); overflow: hidden; }
+  .preview-chart img { width: 100%; height: auto; display: block; }
+  #canvas3d { width: 100%; height: 300px; display: block; }
+
+  .actions { display: none; margin-top: 16px; }
   .actions.show { display: flex; gap: 12px; flex-wrap: wrap; }
   .btn {
     padding: 12px 28px;
@@ -170,115 +138,64 @@
   }
   .btn:hover { transform: translateY(-1px); }
   .btn:active { transform: translateY(0); }
-  .btn-primary {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+  .btn-primary { border-color: var(--accent); color: var(--accent); }
   .btn-primary:hover { background: rgba(80, 180, 255, 0.12); }
-  .btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none;
-  }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-  /* Downloads */
   .downloads { display: none; }
   .downloads.show { display: flex; flex-direction: column; gap: 10px; }
-  .dl-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-size: 0.9rem;
-  }
-  .dl-row a {
-    color: var(--accent);
-    text-decoration: none;
-    font-weight: 600;
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.15s;
-  }
+  .dl-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 8px; font-size: 0.9rem; }
+  .dl-row a { color: var(--accent); text-decoration: none; font-weight: 600; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
   .dl-row a:hover { border-bottom-color: var(--accent); }
   .dl-wav  { background: rgba(80, 180, 255, 0.08); }
   .dl-stl  { background: rgba(180, 130, 255, 0.08); }
   .dl-json { background: rgba(100, 255, 180, 0.08); }
   .dl-icon { font-size: 1.3rem; }
 
-  /* Audio preview */
   .audio-preview { display: none; margin-top: 10px; }
   .audio-preview.show { display: block; }
   .audio-preview audio { width: 100%; border-radius: 6px; }
 
-  /* Progress */
   .progress { display: none; margin-top: 10px; }
   .progress.show { display: flex; align-items: center; gap: 10px; }
-  .spinner {
-    width: 20px; height: 20px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
+  .spinner { width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .progress span { font-size: 0.85rem; color: var(--dim); }
 
-  .error {
-    display: none;
-    margin-top: 10px;
-    padding: 10px 16px;
-    background: rgba(255, 100, 100, 0.1);
-    border: 1px solid var(--danger);
-    border-radius: 6px;
-    color: var(--danger);
-    font-size: 0.85rem;
-  }
+  .error { display: none; margin-top: 10px; padding: 10px 16px; background: rgba(255, 100, 100, 0.1); border: 1px solid var(--danger); border-radius: 6px; color: var(--danger); font-size: 0.85rem; }
   .error.show { display: block; }
 
-  footer {
-    margin-top: auto;
-    padding: 16px 32px;
-    font-size: 0.75rem;
-    color: var(--dim);
-    border-top: 1px solid #1a1a28;
-    width: 100%;
-    text-align: center;
-  }
+  footer { margin-top: auto; padding: 16px 32px; font-size: 0.75rem; color: var(--dim); border-top: 1px solid #1a1a28; width: 100%; text-align: center; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>DataSoniPrint</h1>
-  <p>Upload Data (CSV, HDF5, NetCDF, GRIB, ASDF) &rarr; Sonify &rarr; Download Audio + 3D Print + Settings</p>
+  <p>Upload Data (CSV, HDF5, NetCDF, GRIB, ASDF) → Sonify → Download Audio + 3D Print + Settings</p>
 </header>
 
 <main>
 
   <!-- Step 1: Upload -->
   <div class="card" id="uploadCard">
-    <h2>1 &mdash; Upload Data</h2>
+    <h2>1 — Upload Data</h2>
     <div class="upload-zone" id="dropZone">
-      <div class="icon">&#128203;</div>
+      <div class="icon">📄</div>
       <div><strong>Drop a data file here</strong></div>
-      <p>CSV, HDF5, NetCDF, GRIB, ASDF &middot; max 1 GB</p>
+      <p>CSV, HDF5, NetCDF, GRIB, ASDF · max 1 GB</p>
     </div>
     <input type="file" id="fileInput" accept=".csv,.h5,.hdf5,.hdf,.nc,.nc4,.netcdf,.grib,.grib2,.grb,.grb2,.asdf">
     <div class="file-info" id="fileInfo">
-      <span class="name" id="fileName"></span>&ensp;&mdash;&ensp;
+      <span class="name" id="fileName"></span>&ensp;—&ensp;
       <span id="fileMeta"></span>
     </div>
     <div class="col-select" id="colSelect">
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap">
         <label style="font-size:0.82rem;color:var(--dim)">Sonify columns:</label>
-        <span style="font-size:0.72rem;color:var(--dim)">(each selected column becomes an FM voice &mdash; all data points audible)</span>
-        <button id="selectAllBtn"
-                style="font-size:0.72rem;padding:3px 10px;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:4px;cursor:pointer">
-          Select All
-        </button>
+        <button id="selectAllBtn" style="font-size:0.72rem;padding:3px 10px;background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:4px;cursor:pointer">Select All</button>
       </div>
       <div id="colCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      <select id="colDropdown" style="display:none"></select>
     </div>
     <div class="stats-table" id="statsTable">
       <table>
@@ -286,119 +203,171 @@
         <tbody id="statsBody"></tbody>
       </table>
     </div>
-    <div class="preview-chart" id="previewChart" style="display:none;margin-top:14px">
-      <img id="previewImg" style="width:100%;border-radius:6px;border:1px solid var(--border)" alt="Data preview">
+    <div class="preview-section" id="previewChartSection">
+      <h3>📊 Data Preview</h3>
+      <div class="preview-chart" id="previewChartContainer">
+        <img id="previewImg" alt="Data preview" style="display:none">
+        <div id="previewSpinner" style="text-align:center;padding:40px;color:var(--dim)">Loading preview...</div>
+      </div>
     </div>
     <div class="error" id="uploadError"></div>
   </div>
 
   <!-- Step 2: Configure -->
   <div class="card" id="configCard">
-    <h2>2 &mdash; Configure Sonification</h2>
-    <div class="sliders" id="sliders">
-      <div class="slider-row">
-        <label>Spread</label>
-        <input type="range" id="spreadSlider" min="0" max="100" value="35">
-        <span class="val" id="spreadVal">0.35</span>
-      </div>
-      <div class="slider-row">
-        <label>Speed</label>
-        <input type="range" id="speedSlider" min="0" max="100" value="50">
-        <span class="val" id="speedVal">1.00x</span>
-      </div>
-      <div class="slider-row">
-        <label>Volume</label>
-        <input type="range" id="volumeSlider" min="0" max="100" value="70">
-        <span class="val" id="volumeVal">0.70</span>
+    <h2>2 — Configure Sonification</h2>
+    
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="basic">⚡ Quick Setup</button>
+      <button class="tab-btn" data-tab="advanced">⚙️ Advanced Settings</button>
+    </div>
+
+    <div class="tab-content active" id="basic">
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:12px">Most common adjustments:</p>
+      <div class="sliders" id="slidersBasic" style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="slider-row">
+          <label>Spread</label>
+          <input type="range" id="spreadSlider" min="0" max="100" value="35">
+          <span class="val" id="spreadVal">0.35</span>
+        </div>
+        <div class="slider-row">
+          <label>Speed</label>
+          <input type="range" id="speedSlider" min="0" max="100" value="50">
+          <span class="val" id="speedVal">1.00x</span>
+        </div>
       </div>
     </div>
+
+    <div class="tab-content" id="advanced">
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:12px">Fine-tune all audio parameters:</p>
+      <div class="sliders" id="slidersAdv" style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="slider-row">
+          <label>Spread</label>
+          <input type="range" id="spreadSliderAdv" min="0" max="100" value="35">
+          <span class="val" id="spreadValAdv">0.35</span>
+        </div>
+        <div class="slider-row">
+          <label>Speed</label>
+          <input type="range" id="speedSliderAdv" min="0" max="100" value="50">
+          <span class="val" id="speedValAdv">1.00x</span>
+        </div>
+        <div class="slider-row">
+          <label>Volume</label>
+          <input type="range" id="volumeSlider" min="0" max="100" value="70">
+          <span class="val" id="volumeVal">0.70</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-section show" id="effectsPreviewSection">
+      <h3>🎵 Effects Preview</h3>
+      <div class="preview-chart">
+        <img id="effectsPreviewImg" alt="Effects preview" style="display:none">
+        <div id="effectsSpinner" style="text-align:center;padding:40px;color:var(--dim)">Adjusting sliders updates preview live</div>
+      </div>
+    </div>
+
     <div class="actions" id="actions">
-      <button class="btn btn-primary" id="processBtn" disabled>
-        &#9654;&ensp;Process &amp; Generate
-      </button>
+      <button class="btn btn-primary" id="processBtn" disabled>▶ Process &amp; Generate</button>
     </div>
     <div class="progress" id="progress">
       <div class="spinner"></div>
-      <span>Processing &mdash; sonifying, computing spectrogram, building STL&hellip;</span>
+      <span>Processing — sonifying, computing spectrogram, building STL…</span>
     </div>
     <div class="error" id="processError"></div>
   </div>
 
-  <!-- Step 3: Downloads -->
-  <div class="card" id="downloadCard">
-    <h2>3 &mdash; Download Results</h2>
+  <!-- Step 3: Preview & Downloads -->
+  <div class="card" id="previewCard">
+    <h2>3 — 3D Model &amp; Download</h2>
+    
+    <div class="preview-section show" id="stlPreviewSection">
+      <h3>🔲 3D Terrain (STL Preview)</h3>
+      <div class="preview-3d">
+        <canvas id="canvas3d"></canvas>
+      </div>
+      <p style="font-size:0.75rem;color:var(--dim);margin-top:6px">Scroll to zoom · Click+drag to rotate</p>
+    </div>
+
     <div class="downloads" id="downloads">
       <div class="dl-row dl-wav">
-        <span class="dl-icon">&#127925;</span>
+        <span class="dl-icon">🎵</span>
         <a id="dlWav" href="#">sonified_audio.wav</a>
         <span style="color:var(--dim);font-size:0.8rem" id="wavInfo"></span>
       </div>
       <div class="dl-row dl-stl">
-        <span class="dl-icon">&#129529;</span>
+        <span class="dl-icon">🗿</span>
         <a id="dlStl" href="#">data_terrain.stl</a>
         <span style="color:var(--dim);font-size:0.8rem">3D-printable spectrogram terrain</span>
       </div>
       <div class="dl-row dl-json">
-        <span class="dl-icon">&#128190;</span>
+        <span class="dl-icon">💾</span>
         <a id="dlSettings" href="#">settings.json</a>
         <span style="color:var(--dim);font-size:0.8rem">All parameters &amp; column stats</span>
       </div>
     </div>
     <div class="audio-preview" id="audioPreview">
-      <audio id="audioPlayer" controls></audio>
+      <audio id="audioPlayer" controls style="margin-top:12px"></audio>
     </div>
   </div>
 
 </main>
 
 <footer>
-  DataSoniPrint &mdash; Making data experienceable through sound, sight, and touch.
+  DataSoniPrint — Making data experienceable through sound, sight, and touch.
 </footer>
 
 <script>
 const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
 
-// State
 let jobId = null;
 let headers = [];
 
-// Elements
-const dropZone    = $('#dropZone');
-const fileInput   = $('#fileInput');
-const fileInfo    = $('#fileInfo');
-const fileName    = $('#fileName');
-const fileMeta    = $('#fileMeta');
-const colSelect   = $('#colSelect');
-const colDropdown = $('#colDropdown');
-const colCheckboxes = $('#colCheckboxes');
-const selectAllBtn = $('#selectAllBtn');
-const statsTable  = $('#statsTable');
-const statsBody   = $('#statsBody');
-const uploadError = $('#uploadError');
-const previewChart = $('#previewChart');
-const previewImg   = $('#previewImg');
-const sliders     = $('#sliders');
-const actions     = $('#actions');
-const processBtn  = $('#processBtn');
-const progress    = $('#progress');
-const processError= $('#processError');
-const downloads   = $('#downloads');
-const audioPreview= $('#audioPreview');
-const audioPlayer = $('#audioPlayer');
+// Tab switching
+$$('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.dataset.tab;
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    $(`#${tabName}`).classList.add('active');
+    syncSliders();
+  });
+});
 
-// Slider readouts
-const spreadSlider = $('#spreadSlider');
-const speedSlider  = $('#speedSlider');
-const volumeSlider = $('#volumeSlider');
-const spreadVal    = $('#spreadVal');
-const speedVal     = $('#speedVal');
-const volumeVal    = $('#volumeVal');
+function syncSliders() {
+  const activeTab = document.querySelector('.tab-content.active').id;
+  if (activeTab === 'basic') {
+    $('#spreadSliderAdv').value = $('#spreadSlider').value;
+    $('#speedSliderAdv').value = $('#speedSlider').value;
+  } else {
+    $('#spreadSlider').value = $('#spreadSliderAdv').value;
+    $('#speedSlider').value = $('#speedSliderAdv').value;
+  }
+  updateAllValues();
+}
 
 function sliderNorm(el) { return parseInt(el.value) / 100; }
 function speedDisplay(v) { return (0.25 * Math.pow(16, v)).toFixed(2) + 'x'; }
 
+function updateAllValues() {
+  $('#spreadVal').textContent = sliderNorm($('#spreadSlider')).toFixed(2);
+  $('#speedVal').textContent = speedDisplay(sliderNorm($('#speedSlider')));
+  $('#spreadValAdv').textContent = sliderNorm($('#spreadSliderAdv')).toFixed(2);
+  $('#speedValAdv').textContent = speedDisplay(sliderNorm($('#speedSliderAdv')));
+  $('#volumeVal').textContent = sliderNorm($('#volumeSlider')).toFixed(2);
+}
+
+$$('#spreadSlider, #speedSlider, #spreadSliderAdv, #speedSliderAdv, #volumeSlider').forEach(el => {
+  el.addEventListener('input', () => {
+    updateAllValues();
+    updateEffectsPreview();
+  });
+});
+
 function getSelectedColumns() {
-  return Array.from(colCheckboxes.querySelectorAll('input:checked')).map(cb => cb.value);
+  return Array.from($('#colCheckboxes').querySelectorAll('input:checked')).map(cb => cb.value);
 }
 
 async function fetchPreview(column) {
@@ -410,29 +379,43 @@ async function fetchPreview(column) {
     });
     if (res.ok) {
       const blob = await res.blob();
-      previewImg.src = URL.createObjectURL(blob);
-      previewChart.style.display = 'block';
+      $('#previewImg').src = URL.createObjectURL(blob);
+      $('#previewImg').style.display = 'block';
+      $('#previewSpinner').style.display = 'none';
     }
-  } catch (e) { /* preview is best-effort */ }
+  } catch (e) {}
 }
 
-selectAllBtn.addEventListener('click', () => {
-  const boxes = colCheckboxes.querySelectorAll('input');
+async function updateEffectsPreview() {
+  if (!jobId) return;
+  const selectedCols = getSelectedColumns();
+  if (selectedCols.length === 0) return;
+  
+  const activeTab = document.querySelector('.tab-content.active').id;
+  const spread = activeTab === 'basic' ? sliderNorm($('#spreadSlider')) : sliderNorm($('#spreadSliderAdv'));
+  
+  try {
+    const res = await fetch('/preview-effects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobId, columns: selectedCols, spread: spread }),
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      $('#effectsPreviewImg').src = URL.createObjectURL(blob);
+      $('#effectsPreviewImg').style.display = 'block';
+      $('#effectsSpinner').style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+$('#selectAllBtn').addEventListener('click', () => {
+  const boxes = $('#colCheckboxes').querySelectorAll('input');
   const allChecked = Array.from(boxes).every(cb => cb.checked);
   boxes.forEach(cb => cb.checked = !allChecked);
 });
 
-spreadSlider.addEventListener('input', () => {
-  spreadVal.textContent = sliderNorm(spreadSlider).toFixed(2);
-});
-speedSlider.addEventListener('input', () => {
-  speedVal.textContent = speedDisplay(sliderNorm(speedSlider));
-});
-volumeSlider.addEventListener('input', () => {
-  volumeVal.textContent = sliderNorm(volumeSlider).toFixed(2);
-});
-
-// Upload — drag & drop
+const dropZone = $('#dropZone');
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
 dropZone.addEventListener('drop', e => {
@@ -440,23 +423,22 @@ dropZone.addEventListener('drop', e => {
   dropZone.classList.remove('drag');
   if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
 });
-dropZone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) handleFile(fileInput.files[0]);
+dropZone.addEventListener('click', () => $('#fileInput').click());
+$('#fileInput').addEventListener('change', () => {
+  if ($('#fileInput').files.length) handleFile($('#fileInput').files[0]);
 });
 
 async function handleFile(file) {
-  // Reset state
-  uploadError.classList.remove('show');
-  processError.classList.remove('show');
-  downloads.classList.remove('show');
-  audioPreview.classList.remove('show');
+  $('#uploadError').classList.remove('show');
+  $('#processError').classList.remove('show');
+  $('#downloads').classList.remove('show');
+  $('#audioPreview').classList.remove('show');
 
   const allowedExt = ['.csv','.h5','.hdf5','.hdf','.nc','.nc4','.netcdf','.grib','.grib2','.grb','.grb2','.asdf'];
   const ext = '.' + file.name.split('.').pop().toLowerCase();
   if (!allowedExt.includes(ext)) {
-    uploadError.textContent = 'Unsupported format. Accepted: CSV, HDF5, NetCDF, GRIB, ASDF';
-    uploadError.classList.add('show');
+    $('#uploadError').textContent = 'Unsupported format. Accepted: CSV, HDF5, NetCDF, GRIB, ASDF';
+    $('#uploadError').classList.add('show');
     return;
   }
 
@@ -468,89 +450,79 @@ async function handleFile(file) {
     const data = await res.json();
 
     if (!res.ok) {
-      uploadError.textContent = data.error || 'Upload failed';
-      uploadError.classList.add('show');
+      $('#uploadError').textContent = data.error || 'Upload failed';
+      $('#uploadError').classList.add('show');
       return;
     }
 
     jobId = data.job_id;
     headers = data.headers;
 
-    // Show file info
-    fileName.textContent = data.filename;
-    fileMeta.textContent = `${data.row_count} rows · ${data.headers.length} numeric columns`;
-    fileInfo.classList.add('show');
+    $('#fileName').textContent = data.filename;
+    $('#fileMeta').textContent = `${data.row_count} rows · ${data.headers.length} numeric columns`;
+    $('#fileInfo').classList.add('show');
 
-    // Column checkboxes
-    colCheckboxes.innerHTML = '';
+    $('#colCheckboxes').innerHTML = '';
     data.headers.forEach((h, i) => {
       const label = document.createElement('label');
       label.style.cssText = 'font-size:0.8rem;color:var(--text);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;gap:5px;user-select:none';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.value = h;
-      cb.checked = true;  // select all by default
-      cb.style.accentColor = 'var(--accent)';
-      cb.addEventListener('change', () => {
-        if (jobId) fetchPreview(h);
-      });
+      cb.checked = true;
+      cb.addEventListener('change', updateEffectsPreview);
       label.appendChild(cb);
       label.appendChild(document.createTextNode(h));
-      colCheckboxes.appendChild(label);
+      $('#colCheckboxes').appendChild(label);
     });
-    colSelect.classList.add('show');
+    $('#colSelect').classList.add('show');
 
-    // Stats table
-    statsBody.innerHTML = '';
+    $('#statsBody').innerHTML = '';
     data.headers.forEach(h => {
       const s = data.stats[h];
       if (!s) return;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td style="color:var(--accent)">${h}</td>
-        <td>${s.min.toFixed(4)}</td><td>${s.max.toFixed(4)}</td>
-        <td>${s.mean.toFixed(4)}</td><td>${s.count}</td>`;
-      statsBody.appendChild(tr);
+      tr.innerHTML = `<td style="color:var(--accent)">${h}</td><td>${s.min.toFixed(4)}</td><td>${s.max.toFixed(4)}</td><td>${s.mean.toFixed(4)}</td><td>${s.count}</td>`;
+      $('#statsBody').appendChild(tr);
     });
-    statsTable.classList.add('show');
+    $('#statsTable').classList.add('show');
 
-    // Enable controls
-    sliders.classList.add('show');
-    actions.classList.add('show');
-    processBtn.disabled = false;
+    $('#actions').classList.add('show');
+    $('#processBtn').disabled = false;
 
-    // Load initial preview chart
+    $('#previewChartSection').classList.add('show');
+    updateAllValues();
     fetchPreview(data.headers[0]);
+    updateEffectsPreview();
 
   } catch (e) {
-    uploadError.textContent = 'Network error: ' + e.message;
-    uploadError.classList.add('show');
+    $('#uploadError').textContent = 'Network error: ' + e.message;
+    $('#uploadError').classList.add('show');
   }
 }
 
-// Process
-processBtn.addEventListener('click', async () => {
-  processBtn.disabled = true;
-  processError.classList.remove('show');
-  downloads.classList.remove('show');
-  audioPreview.classList.remove('show');
-  progress.classList.add('show');
+$('#processBtn').addEventListener('click', async () => {
+  $('#processBtn').disabled = true;
+  $('#processError').classList.remove('show');
+  $('#downloads').classList.remove('show');
+  $('#audioPreview').classList.remove('show');
+  $('#progress').classList.add('show');
 
   const selectedCols = getSelectedColumns();
   if (selectedCols.length === 0) {
-    processError.textContent = 'Select at least one column to sonify.';
-    processError.classList.add('show');
-    processBtn.disabled = false;
-    progress.classList.remove('show');
+    $('#processError').textContent = 'Select at least one column to sonify.';
+    $('#processError').classList.add('show');
+    $('#processBtn').disabled = false;
+    $('#progress').classList.remove('show');
     return;
   }
 
-  const body = {
-    job_id: jobId,
-    columns: selectedCols,
-    spread: sliderNorm(spreadSlider),
-    speed: sliderNorm(speedSlider),
-    volume: sliderNorm(volumeSlider),
-  };
+  const activeTab = document.querySelector('.tab-content.active').id;
+  const spread = activeTab === 'basic' ? sliderNorm($('#spreadSlider')) : sliderNorm($('#spreadSliderAdv'));
+  const speed = activeTab === 'basic' ? sliderNorm($('#speedSlider')) : sliderNorm($('#speedSliderAdv'));
+  const volume = sliderNorm($('#volumeSlider'));
+
+  const body = { job_id: jobId, columns: selectedCols, spread, speed, volume };
 
   try {
     const res = await fetch('/process', {
@@ -560,16 +532,15 @@ processBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
 
-    progress.classList.remove('show');
+    $('#progress').classList.remove('show');
 
     if (!res.ok) {
-      processError.textContent = data.error || 'Processing failed';
-      processError.classList.add('show');
-      processBtn.disabled = false;
+      $('#processError').textContent = data.error || 'Processing failed';
+      $('#processError').classList.add('show');
+      $('#processBtn').disabled = false;
       return;
     }
 
-    // Set download links
     const base = `/download/${jobId}`;
     $('#dlWav').href = `${base}/wav`;
     $('#dlStl').href = `${base}/stl`;
@@ -578,23 +549,176 @@ processBtn.addEventListener('click', async () => {
     const s = data.settings;
     const colLabel = s.columns_sonified ? s.columns_sonified.join('+') : 'data';
     $('#dlWav').textContent = `${colLabel}_sonified.wav`;
-    const chInfo = `${s.n_voices} voice${s.n_voices > 1 ? 's' : ''}`;
-    $('#wavInfo').textContent = `${s.audio_duration_sec}s · ${s.sample_rate} Hz · ${chInfo}`;
+    $('#wavInfo').textContent = `${s.audio_duration_sec}s · ${s.sample_rate} Hz · ${s.n_voices} voice${s.n_voices > 1 ? 's' : ''}`;
 
-    downloads.classList.add('show');
+    $('#downloads').classList.add('show');
+    $('#audioPlayer').src = `${base}/wav`;
+    $('#audioPreview').classList.add('show');
 
-    // Audio preview
-    audioPlayer.src = `${base}/wav`;
-    audioPreview.classList.add('show');
-
-    processBtn.disabled = false;
+    load3dPreview(jobId);
+    $('#processBtn').disabled = false;
 
   } catch (e) {
-    progress.classList.remove('show');
-    processError.textContent = 'Network error: ' + e.message;
-    processError.classList.add('show');
-    processBtn.disabled = false;
+    $('#progress').classList.remove('show');
+    $('#processError').textContent = 'Network error: ' + e.message;
+    $('#processError').classList.add('show');
+    $('#processBtn').disabled = false;
   }
+});
+
+// 3D Viewer
+let scene, camera, renderer, stlMesh;
+
+function init3dViewer() {
+  const canvas = $('#canvas3d');
+  if (!canvas) return;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0a12);
+
+  camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / 300, 0.1, 1000);
+  camera.position.set(0, 0, 150);
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(canvas.clientWidth, 300);
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(100, 100, 100);
+  scene.add(directionalLight);
+
+  const gridHelper = new THREE.GridHelper(200, 20, 0x32324a, 0x1e1e30);
+  scene.add(gridHelper);
+
+  const axesHelper = new THREE.AxesHelper(75);
+  scene.add(axesHelper);
+
+  let isDragging = false;
+  let previousMousePosition = { x: 0, y: 0 };
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging || !stlMesh) return;
+    const deltaX = e.clientX - previousMousePosition.x;
+    const deltaY = e.clientY - previousMousePosition.y;
+    stlMesh.rotation.y += deltaX * 0.005;
+    stlMesh.rotation.x += deltaY * 0.005;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mouseup', () => { isDragging = false; });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    camera.position.z += e.deltaY * 0.1;
+    camera.position.z = Math.max(50, Math.min(500, camera.position.z));
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+async function load3dPreview(jobId) {
+  if (!scene) init3dViewer();
+
+  try {
+    const res = await fetch(`/download/${jobId}/stl`);
+    if (!res.ok) return;
+    
+    const arrayBuffer = await res.arrayBuffer();
+    const mesh = parseSTL(arrayBuffer);
+    
+    if (stlMesh) scene.remove(stlMesh);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(mesh.vertices, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3));
+    
+    const material = new THREE.MeshPhongMaterial({ color: 0x50b4ff, emissive: 0x1a3a4a });
+    stlMesh = new THREE.Mesh(geometry, material);
+    scene.add(stlMesh);
+    geometry.center();
+  } catch (e) { console.error('3D preview failed:', e); }
+}
+
+function parseSTL(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  const isASCII = isASCIISTL(arrayBuffer);
+  return isASCII ? parseASCIISTL(new TextDecoder().decode(arrayBuffer)) : parseBinarySTL(arrayBuffer);
+}
+
+function isASCIISTL(arrayBuffer) {
+  const view = new Uint8Array(arrayBuffer);
+  const header = new TextDecoder().decode(view.slice(0, 5));
+  return header === 'solid';
+}
+
+function parseBinarySTL(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  const triangles = view.getUint32(80, true);
+  const vertices = [];
+  const normals = [];
+  
+  let offset = 84;
+  for (let i = 0; i < triangles; i++) {
+    const nx = view.getFloat32(offset, true); offset += 4;
+    const ny = view.getFloat32(offset, true); offset += 4;
+    const nz = view.getFloat32(offset, true); offset += 4;
+    
+    for (let j = 0; j < 3; j++) {
+      const x = view.getFloat32(offset, true); offset += 4;
+      const y = view.getFloat32(offset, true); offset += 4;
+      const z = view.getFloat32(offset, true); offset += 4;
+      
+      vertices.push(x, y, z);
+      normals.push(nx, ny, nz);
+    }
+    
+    offset += 2;
+  }
+  
+  return { vertices: new Float32Array(vertices), normals: new Float32Array(normals) };
+}
+
+function parseASCIISTL(str) {
+  const vertices = [];
+  const normals = [];
+  
+  const vertexPattern = /vertex\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)/g;
+  const normalPattern = /facet\s+normal\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)\s+([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)/g;
+  
+  let match;
+  let normalMatch;
+  
+  while ((normalMatch = normalPattern.exec(str)) !== null) {
+    const nx = parseFloat(normalMatch[1]);
+    const ny = parseFloat(normalMatch[3]);
+    const nz = parseFloat(normalMatch[5]);
+    
+    for (let i = 0; i < 3; i++) {
+      vertexPattern.exec(str);
+      match = vertexPattern.exec(str);
+      if (match) {
+        vertices.push(parseFloat(match[1]), parseFloat(match[3]), parseFloat(match[5]));
+        normals.push(nx, ny, nz);
+      }
+    }
+  }
+  
+  return { vertices: new Float32Array(vertices), normals: new Float32Array(normals) };
+}
+
+window.addEventListener('load', () => {
+  setTimeout(init3dViewer, 100);
 });
 </script>
 </body>

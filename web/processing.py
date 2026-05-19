@@ -350,6 +350,45 @@ def generate_preview_png(columns, headers, selected_column=None):
     return buf.read()
 
 
+def generate_spectrogram_preview_png(times, freqs, spec_db):
+    """Generate a matplotlib heatmap PNG of the spectrogram.
+    
+    Shows time vs. frequency with power as color.
+    Returns PNG bytes.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    
+    fig, ax = plt.subplots(figsize=(10, 4), dpi=100)
+    fig.patch.set_facecolor("#12121c")
+    ax.set_facecolor("#0a0a12")
+    
+    # Plot spectrogram as heatmap
+    im = ax.pcolormesh(times, freqs, spec_db, cmap="viridis", shading="auto", 
+                       vmin=np.percentile(spec_db, 5), vmax=np.percentile(spec_db, 95))
+    
+    ax.set_ylabel("Frequency (Hz)", color="#dcdce6", fontsize=10)
+    ax.set_xlabel("Time (s)", color="#dcdce6", fontsize=10)
+    ax.set_title("Sonification Spectrogram", color="#dcdce6", fontsize=12, pad=8)
+    ax.tick_params(colors="#8c8ca0", labelsize=9)
+    
+    # Colorbar
+    cbar = plt.colorbar(im, ax=ax, label="Power (dB)")
+    cbar.set_label("Power (dB)", color="#dcdce6")
+    cbar.ax.tick_params(colors="#8c8ca0", labelsize=8)
+    
+    for spine in ax.spines.values():
+        spine.set_color("#32324a")
+    
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight",
+                facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
+
 # ─── Data safety ─────────────────────────────────────────────────────────────
 
 # Cap input points to prevent multi-GB memory allocations.
