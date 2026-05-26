@@ -165,6 +165,13 @@
   .error { display: none; margin-top: 10px; padding: 10px 16px; background: rgba(255, 100, 100, 0.1); border: 1px solid var(--danger); border-radius: 6px; color: var(--danger); font-size: 0.85rem; }
   .error.show { display: block; }
 
+  #configCard { display: none; }
+
+  .controls-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .btn-toggle { padding: 8px 16px; border: 1px solid var(--border); background: transparent; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 0.85rem; transition: background 0.15s, border-color 0.15s; }
+  .btn-toggle:hover { background: rgba(80, 180, 255, 0.1); border-color: var(--accent); }
+  .btn-toggle.active { background: rgba(80, 180, 255, 0.2); border-color: var(--accent); color: var(--accent); }
+
   footer { margin-top: auto; padding: 16px 32px; font-size: 0.75rem; color: var(--dim); border-top: 1px solid #1a1a28; width: 100%; text-align: center; }
 </style>
 </head>
@@ -209,6 +216,13 @@
         <img id="previewImg" alt="Data preview" style="display:none">
         <div id="previewSpinner" style="text-align:center;padding:40px;color:var(--dim)">Loading preview...</div>
       </div>
+    </div>
+    <div class="actions" id="generateActions" style="display: none; margin-top: 16px;">
+      <button class="btn btn-primary" id="generateBtn">▶ Generate 3D Model</button>
+    </div>
+    <div class="progress" id="generateProgress">
+      <div class="spinner"></div>
+      <span>Generating 3D model…</span>
     </div>
     <div class="error" id="uploadError"></div>
   </div>
@@ -287,6 +301,9 @@
         <canvas id="canvas3d"></canvas>
       </div>
       <p style="font-size:0.75rem;color:var(--dim);margin-top:6px">Scroll to zoom · Click+drag to rotate</p>
+      <div class="controls-row">
+        <button id="toggleAxesBtn" class="btn-toggle active" title="Show/hide coordinate axes">📍 Axes: ON</button>
+      </div>
     </div>
 
     <div class="downloads" id="downloads">
@@ -487,13 +504,12 @@ async function handleFile(file) {
     });
     $('#statsTable').classList.add('show');
 
-    $('#actions').classList.add('show');
-    $('#processBtn').disabled = false;
+    $('#generateActions').style.display = 'flex';
+    $('#generateProgress').style.display = 'none';
 
     $('#previewChartSection').classList.add('show');
     updateAllValues();
     fetchPreview(data.headers[0]);
-    updateEffectsPreview();
 
   } catch (e) {
     $('#uploadError').textContent = 'Network error: ' + e.message;
@@ -566,8 +582,70 @@ $('#processBtn').addEventListener('click', async () => {
   }
 });
 
+$('#generateBtn').addEventListener('click', async () => {
+  $('#generateBtn').disabled = true;
+  $('#uploadError').classList.remove('show');
+  $('#downloads').classList.remove('show');
+  $('#generateProgress').style.display = 'flex';
+
+  // Use all columns with default settings for presentation
+  const allColumns = headers;
+  if (allColumns.length === 0) {
+    $('#uploadError').textContent = 'No columns available';
+    $('#uploadError').classList.add('show');
+    $('#generateBtn').disabled = false;
+    $('#generateProgress').style.display = 'none';
+    return;
+  }
+
+  // Use default sonification settings for presentation
+  const body = { job_id: jobId, columns: allColumns, spread: 0.35, speed: 0.5, volume: 0.7 };
+
+  try {
+    const res = await fetch('/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    $('#generateProgress').style.display = 'none';
+
+    if (!res.ok) {
+      $('#uploadError').textContent = data.error || 'Processing failed';
+      $('#uploadError').classList.add('show');
+      $('#generateBtn').disabled = false;
+      return;
+    }
+
+    const base = `/download/${jobId}`;
+    $('#dlWav').href = `${base}/wav`;
+    $('#dlStl').href = `${base}/stl`;
+    $('#dlSettings').href = `${base}/settings`;
+
+    const s = data.settings;
+    const colLabel = s.columns_sonified ? s.columns_sonified.join('+') : 'data';
+    $('#dlWav').textContent = `${colLabel}_sonified.wav`;
+    $('#wavInfo').textContent = `${s.audio_duration_sec}s · ${s.sample_rate} Hz · ${s.n_voices} voice${s.n_voices > 1 ? 's' : ''}`;
+
+    $('#downloads').classList.add('show');
+    $('#audioPlayer').src = `${base}/wav`;
+    $('#audioPreview').classList.add('show');
+
+    load3dPreview(jobId);
+    $('#generateBtn').disabled = false;
+
+  } catch (e) {
+    $('#generateProgress').style.display = 'none';
+    $('#uploadError').textContent = 'Network error: ' + e.message;
+    $('#uploadError').classList.add('show');
+    $('#generateBtn').disabled = false;
+  }
+});
+
 // 3D Viewer
-let scene, camera, renderer, stlMesh;
+let scene, camera, renderer, stlMesh, axesHelper, gridHelper;
+let axesVisible = true;
 
 function init3dViewer() {
   const canvas = $('#canvas3d');
@@ -589,11 +667,25 @@ function init3dViewer() {
   directionalLight.position.set(100, 100, 100);
   scene.add(directionalLight);
 
-  const gridHelper = new THREE.GridHelper(200, 20, 0x32324a, 0x1e1e30);
+  gridHelper = new THREE.GridHelper(200, 20, 0x32324a, 0x1e1e30);
   scene.add(gridHelper);
 
-  const axesHelper = new THREE.AxesHelper(75);
+  axesHelper = new THREE.AxesHelper(75);
   scene.add(axesHelper);
+
+  // Axes toggle button
+  $('#toggleAxesBtn').addEventListener('click', () => {
+    axesVisible = !axesVisible;
+    axesHelper.visible = axesVisible;
+    const btn = $('#toggleAxesBtn');
+    if (axesVisible) {
+      btn.textContent = '📍 Axes: ON';
+      btn.classList.add('active');
+    } else {
+      btn.textContent = '📍 Axes: OFF';
+      btn.classList.remove('active');
+    }
+  });
 
   let isDragging = false;
   let previousMousePosition = { x: 0, y: 0 };
